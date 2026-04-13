@@ -4,6 +4,7 @@ const app = express();
 app.use(express.json());
 
 const API_KEY = "f0c0ba6116ce04b22d411011a8de95228032f339d8e64a09cd8a5b43f072c921";
+const SESSION_ID = "77337";
 
 app.get('/', (req, res) => {
   res.send('Wakala Sinza Bot inafanya kazi!');
@@ -11,53 +12,49 @@ app.get('/', (req, res) => {
 
 app.post('/webhook', async (req, res) => {
   console.log("FULL BODY:", JSON.stringify(req.body, null, 2));
+  res.send("OK");
 
   try {
-    const body = req.body;
+    const messages = req.body?.data?.messages;
+    if (!messages) return;
 
-    const fromMe = body?.data?.messages?.key?.fromMe
-                || body?.data?.key?.fromMe
-                || body?.key?.fromMe
-                || false;
+    const fromMe = messages?.key?.fromMe;
+    if (fromMe) return;
 
-    if (fromMe) {
-      console.log("From me, skipping");
-      return res.send("OK");
-    }
+    const messageBody = messages?.messageBody || "";
+    if (!messageBody) return;
 
-    const messageBody = body?.data?.messages?.messageBody
-                     || body?.data?.messageBody
-                     || body?.messageBody
-                     || "";
-
-    const remoteJid = body?.data?.messages?.key?.remoteJid
-                   || body?.data?.key?.remoteJid
-                   || body?.key?.remoteJid
-                   || body?.remoteJid
-                   || "";
-
-    const cleanedPn = body?.data?.messages?.key?.cleanedSenderPn
-                   || body?.data?.key?.cleanedSenderPn
-                   || body?.key?.cleanedSenderPn
-                   || "";
+    const remoteJid = messages?.key?.remoteJid || "";
+    let cleanedPn = messages?.key?.cleanedSenderPn || "";
 
     console.log("remoteJid:", remoteJid);
     console.log("cleanedPn:", cleanedPn);
     console.log("messageBody:", messageBody);
 
-    const replyTo = remoteJid || (cleanedPn ? "+" + cleanedPn : "");
+    if (!cleanedPn && remoteJid.includes("@lid")) {
+      console.log("LID detected, converting to phone number...");
+      try {
+        const lidRes = await axios.get(
+          `https://wasenderapi.com/api/contacts/get-pn-from-lid?lid=${encodeURIComponent(remoteJid)}&sessionId=${SESSION_ID}`,
+          {
+            headers: { Authorization: `Bearer ${API_KEY}` }
+          }
+        );
+        cleanedPn = lidRes.data?.phoneNumber || lidRes.data?.pn || "";
+        console.log("Converted LID to phone:", cleanedPn);
+      } catch (lidErr) {
+        console.error("LID conversion failed:", lidErr.response?.data || lidErr.message);
+      }
+    }
+
+    const replyTo = cleanedPn ? "+" + cleanedPn.replace("+", "") : remoteJid;
 
     if (!replyTo || replyTo.length < 5) {
-      console.log("No valid recipient, skipping");
-      return res.send("OK");
+      console.log("No valid recipient");
+      return;
     }
 
-    if (!messageBody) {
-      console.log("No message body, skipping");
-      return res.send("OK");
-    }
-
-    console.log("Sending reply to:", replyTo);
+    console.log("Replying to:", replyTo);
 
     await axios.post(
       "https://wasenderapi.com/api/send-message",
@@ -73,12 +70,10 @@ app.post('/webhook', async (req, res) => {
       }
     );
 
-    console.log("Reply sent successfully to:", replyTo);
-    res.send("OK");
+    console.log("Reply sent to:", replyTo);
 
   } catch (error) {
-    console.error("Error details:", error.response?.data || error.message);
-    res.send("Error");
+    console.error("Error:", error.response?.data || error.message);
   }
 });
 

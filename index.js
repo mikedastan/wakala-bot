@@ -5,6 +5,7 @@ app.use(express.json());
 
 const API_KEY = "f0c0ba6116ce04b22d411011a8de95228032f339d8e64a09cd8a5b43f072c921";
 const SESSION_ID = "77337";
+const ALLOWED_NUMBER = "255755459575";
 
 app.get('/', (req, res) => {
   res.send('Wakala Sinza Bot inafanya kazi!');
@@ -47,14 +48,17 @@ app.post('/webhook', async (req, res) => {
       }
     }
 
-    const replyTo = cleanedPn ? "+" + cleanedPn.replace("+", "") : remoteJid;
+    const senderNumber = cleanedPn.replace("+", "").trim();
+    console.log("Sender number:", senderNumber);
 
-    if (!replyTo || replyTo.length < 5) {
-      console.log("No valid recipient");
+    if (!senderNumber.includes(ALLOWED_NUMBER)) {
+      console.log("Unauthorized sender:", senderNumber);
       return;
     }
 
-    console.log("Replying to:", replyTo);
+    console.log("Authorized! Replying...");
+
+    const replyTo = cleanedPn ? "+" + senderNumber : remoteJid;
 
     await axios.post(
       "https://wasenderapi.com/api/send-message",

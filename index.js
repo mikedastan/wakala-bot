@@ -4,37 +4,42 @@ const app = express();
 app.use(express.json());
 
 const API_KEY = "f0c0ba6116ce04b22d411011a8de95228032f339d8e64a09cd8a5b43f072c921";
-const SESSION_ID = "77337";
-const ALLOWED_NUMBER = "255755459575";
+const INVITE_CODE = "JnERqGR3r7U7SjG2PacmYn";
 
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
   res.send('Wakala Sinza Bot inafanya kazi!');
 });
 
+app.get('/getgroup', async (req, res) => {
+  try {
+    const response = await axios.get(
+      `https://wasenderapi.com/api/groups/invite/${INVITE_CODE}`,
+      {
+        headers: { Authorization: `Bearer ${API_KEY}` }
+      }
+    );
+    console.log("GROUP INFO:", JSON.stringify(response.data, null, 2));
+    res.json(response.data);
+  } catch (error) {
+    console.error("Error:", error.response?.data || error.message);
+    res.json({ error: error.response?.data || error.message });
+  }
+});
+
 app.post('/webhook', async (req, res) => {
-  console.log("=== FULL WEBHOOK BODY ===");
-  console.log(JSON.stringify(req.body, null, 2));
-  console.log("=== END ===");
+  console.log("FULL BODY:", JSON.stringify(req.body, null, 2));
   res.send("OK");
 
   try {
     const messages = req.body?.data?.messages;
-    if (!messages) { console.log("No messages"); return; }
-
+    if (!messages) return;
     const fromMe = messages?.key?.fromMe;
-    if (fromMe) { console.log("From me, skip"); return; }
-
+    if (fromMe) return;
     const remoteJid = messages?.key?.remoteJid || "";
-    const cleanedPn = messages?.key?.cleanedSenderPn || "";
     const messageBody = messages?.messageBody || "";
-
-    console.log("=== MESSAGE INFO ===");
     console.log("remoteJid:", remoteJid);
-    console.log("cleanedPn:", cleanedPn);
     console.log("messageBody:", messageBody);
     console.log("isGroup:", remoteJid.includes("@g.us"));
-    console.log("===================");
-
   } catch (error) {
     console.error("Error:", error.message);
   }

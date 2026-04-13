@@ -12,72 +12,31 @@ app.get('/', (req, res) => {
 });
 
 app.post('/webhook', async (req, res) => {
-  console.log("FULL BODY:", JSON.stringify(req.body, null, 2));
+  console.log("=== FULL WEBHOOK BODY ===");
+  console.log(JSON.stringify(req.body, null, 2));
+  console.log("=== END ===");
   res.send("OK");
 
   try {
     const messages = req.body?.data?.messages;
-    if (!messages) return;
+    if (!messages) { console.log("No messages"); return; }
 
     const fromMe = messages?.key?.fromMe;
-    if (fromMe) return;
-
-    const messageBody = messages?.messageBody || "";
-    if (!messageBody) return;
+    if (fromMe) { console.log("From me, skip"); return; }
 
     const remoteJid = messages?.key?.remoteJid || "";
-    let cleanedPn = messages?.key?.cleanedSenderPn || "";
+    const cleanedPn = messages?.key?.cleanedSenderPn || "";
+    const messageBody = messages?.messageBody || "";
 
+    console.log("=== MESSAGE INFO ===");
     console.log("remoteJid:", remoteJid);
     console.log("cleanedPn:", cleanedPn);
     console.log("messageBody:", messageBody);
-
-    if (!cleanedPn && remoteJid.includes("@lid")) {
-      console.log("LID detected, converting to phone number...");
-      try {
-        const lidRes = await axios.get(
-          `https://wasenderapi.com/api/contacts/get-pn-from-lid?lid=${encodeURIComponent(remoteJid)}&sessionId=${SESSION_ID}`,
-          {
-            headers: { Authorization: `Bearer ${API_KEY}` }
-          }
-        );
-        cleanedPn = lidRes.data?.phoneNumber || lidRes.data?.pn || "";
-        console.log("Converted LID to phone:", cleanedPn);
-      } catch (lidErr) {
-        console.error("LID conversion failed:", lidErr.response?.data || lidErr.message);
-      }
-    }
-
-    const senderNumber = cleanedPn.replace("+", "").trim();
-    console.log("Sender number:", senderNumber);
-
-    if (!senderNumber.includes(ALLOWED_NUMBER)) {
-      console.log("Unauthorized sender:", senderNumber);
-      return;
-    }
-
-    console.log("Authorized! Replying...");
-
-    const replyTo = cleanedPn ? "+" + senderNumber : remoteJid;
-
-    await axios.post(
-      "https://wasenderapi.com/api/send-message",
-      {
-        to: replyTo,
-        text: "Ujumbe umepokelewa! ✅\nWakala Sinza Bot inafanya kazi.\n\nTumia:\n*RIPOTI* - Kutuma ripoti ya shift\n*USAIDIZI* - Msaada"
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${API_KEY}`,
-          "Content-Type": "application/json"
-        }
-      }
-    );
-
-    console.log("Reply sent to:", replyTo);
+    console.log("isGroup:", remoteJid.includes("@g.us"));
+    console.log("===================");
 
   } catch (error) {
-    console.error("Error:", error.response?.data || error.message);
+    console.error("Error:", error.message);
   }
 });
 

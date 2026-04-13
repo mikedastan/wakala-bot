@@ -8,25 +8,16 @@ app.get('/', (req, res) => {
   res.send('Bot is running 🚀');
 });
 
-// Webhook
+// Webhook (FINAL WORKING VERSION)
 app.post('/webhook', (req, res) => {
   console.log("Incoming:", JSON.stringify(req.body, null, 2));
 
-  // TRY MULTIPLE POSSIBLE FIELDS (Wasender formats vary)
-  const sender =
-    req.body?.from ||
-    req.body?.sender ||
-    req.body?.phone ||
-    req.body?.data?.from ||
-    req.body?.data?.key?.remoteJid ||
-    "";
+  const sender = req.body?.key?.remoteJid || "";
+  const cleanSender = sender.split("@")[0];
 
-  console.log("Detected sender:", sender);
+  console.log("Detected sender:", cleanSender);
 
   const OFFICE_NUMBER = "255755459575";
-
-  // Normalize sender (remove @s.whatsapp.net if exists)
-  const cleanSender = sender.replace("@s.whatsapp.net", "");
 
   if (!cleanSender.includes(OFFICE_NUMBER)) {
     console.log("Blocked user:", cleanSender);

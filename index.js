@@ -10,38 +10,59 @@ app.get('/', (req, res) => {
 });
 
 app.post('/webhook', async (req, res) => {
-  console.log("Incoming:", JSON.stringify(req.body, null, 2));
+  console.log("FULL BODY:", JSON.stringify(req.body, null, 2));
 
   try {
-    const message = req.body?.data?.message;
+    const body = req.body;
 
-    const sender = req.body?.data?.key?.remoteJid
-                || req.body?.key?.remoteJid
-                || req.body?.remoteJid
-                || "";
+    const fromMe = body?.data?.messages?.key?.fromMe
+                || body?.data?.key?.fromMe
+                || body?.key?.fromMe
+                || false;
 
-    const cleanSender = sender
-      .replace("@s.whatsapp.net", "")
-      .replace("@c.us", "");
-
-    const messageText = message?.conversation
-                     || message?.extendedTextMessage?.text
-                     || req.body?.data?.messageBody
-                     || req.body?.messageBody
-                     || "";
-
-    console.log("Sender:", cleanSender);
-    console.log("Message:", messageText);
-
-    if (!cleanSender || cleanSender.length < 5) {
-      console.log("No valid sender, skipping");
+    if (fromMe) {
+      console.log("From me, skipping");
       return res.send("OK");
     }
+
+    const messageBody = body?.data?.messages?.messageBody
+                     || body?.data?.messageBody
+                     || body?.messageBody
+                     || "";
+
+    const remoteJid = body?.data?.messages?.key?.remoteJid
+                   || body?.data?.key?.remoteJid
+                   || body?.key?.remoteJid
+                   || body?.remoteJid
+                   || "";
+
+    const cleanedPn = body?.data?.messages?.key?.cleanedSenderPn
+                   || body?.data?.key?.cleanedSenderPn
+                   || body?.key?.cleanedSenderPn
+                   || "";
+
+    console.log("remoteJid:", remoteJid);
+    console.log("cleanedPn:", cleanedPn);
+    console.log("messageBody:", messageBody);
+
+    const replyTo = remoteJid || (cleanedPn ? "+" + cleanedPn : "");
+
+    if (!replyTo || replyTo.length < 5) {
+      console.log("No valid recipient, skipping");
+      return res.send("OK");
+    }
+
+    if (!messageBody) {
+      console.log("No message body, skipping");
+      return res.send("OK");
+    }
+
+    console.log("Sending reply to:", replyTo);
 
     await axios.post(
       "https://wasenderapi.com/api/send-message",
       {
-        to: cleanSender + "@s.whatsapp.net",
+        to: replyTo,
         text: "Ujumbe umepokelewa! ✅\nWakala Sinza Bot inafanya kazi.\n\nTumia:\n*RIPOTI* - Kutuma ripoti ya shift\n*USAIDIZI* - Msaada"
       },
       {
@@ -52,11 +73,11 @@ app.post('/webhook', async (req, res) => {
       }
     );
 
-    console.log("Reply sent to:", cleanSender);
+    console.log("Reply sent successfully to:", replyTo);
     res.send("OK");
 
   } catch (error) {
-    console.error("Error sending reply:", error.message);
+    console.error("Error details:", error.response?.data || error.message);
     res.send("Error");
   }
 });

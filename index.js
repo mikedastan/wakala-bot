@@ -1,42 +1,38 @@
 const express = require('express');
 const axios = require('axios');
-
 const app = express();
 app.use(express.json());
 
-// 🔑 PUT YOUR WASENDER API KEY HERE
-const API_KEY = "PASTE_YOUR_API_KEY_HERE";
+const API_KEY = "f0c0ba6116ce04b22d411011a8de95228032f339d8e64a09cd8a5b43f072c921";
+const OFFICE_NUMBER = "255755459575";
 
-// Home route
 app.get('/', (req, res) => {
-  res.send('Bot is running 🚀');
+  res.send('Wakala Sinza Bot is running!');
 });
 
-// Webhook
 app.post('/webhook', async (req, res) => {
   console.log("Incoming:", JSON.stringify(req.body, null, 2));
-
   try {
-    const sender = req.body?.key?.remoteJid || "";
-    const cleanSender = sender.split("@")[0];
+    const message = req.body?.data?.message;
+    const sender = req.body?.data?.key?.remoteJid || "";
+    const cleanSender = sender.replace("@s.whatsapp.net", "").replace("@c.us", "");
+    const messageText = message?.conversation || message?.extendedTextMessage?.text || "";
 
-    console.log("Detected sender:", cleanSender);
-
-    const OFFICE_NUMBER = "255755459575";
+    console.log("Sender:", cleanSender);
+    console.log("Message:", messageText);
 
     if (!cleanSender.includes(OFFICE_NUMBER)) {
-      console.log("Blocked user:", cleanSender);
+      console.log("Blocked:", cleanSender);
       return res.send("Unauthorized");
     }
 
     console.log("Authorized message from office");
 
-    // 🔥 SEND REPLY BACK TO WHATSAPP
     await axios.post(
       "https://wasenderapi.com/api/send-message",
       {
-        to: cleanSender,
-        text: "Report received ✅"
+        to: cleanSender + "@s.whatsapp.net",
+        text: "Ujumbe umepokelewa! ✅\n\nKaribuni Wakala Sinza Bot.\nTumia:\n*RIPOTI* - Kutuma ripoti ya shift\n*USAIDIZI* - Msaada"
       },
       {
         headers: {
@@ -53,8 +49,7 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });

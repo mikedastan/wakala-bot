@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const fs = require('fs');
 const app = express();
 app.use(express.json());
 
@@ -7,21 +8,20 @@ const API_KEY = "f0c0ba6116ce04b22d411011a8de95228032f339d8e64a09cd8a5b43f072c92
 const SESSION_ID = "77337";
 const ALLOWED_NUMBER = "255755459575";
 const GROUP_ID = "120363407884587277@g.us";
-
-const sessions = {};
+const SESSIONS_FILE = "/tmp/sessions.json";
 
 const FLOAT_FIELDS = [
-  { key: "mpesa",      label: "M-PESA" },
-  { key: "tigo",       label: "TIGO PESA" },
-  { key: "airtel",     label: "AIRTEL MONEY" },
-  { key: "halotel",    label: "HALOTEL" },
-  { key: "selcom",     label: "SELCOM" },
-  { key: "tigolipa",   label: "TIGO LIPA" },
-  { key: "airtelipa",  label: "AIRTEL LIPA" },
-  { key: "vodalipa",   label: "VODA LIPA" },
-  { key: "nmb",        label: "NMB BANK" },
-  { key: "crdb",       label: "CRDB BANK" },
-  { key: "cash",       label: "CASH" }
+  { key: "mpesa",     label: "M-PESA" },
+  { key: "tigo",      label: "TIGO PESA" },
+  { key: "airtel",    label: "AIRTEL MONEY" },
+  { key: "halotel",   label: "HALOTEL" },
+  { key: "selcom",    label: "SELCOM" },
+  { key: "tigolipa",  label: "TIGO LIPA" },
+  { key: "airtelipa", label: "AIRTEL LIPA" },
+  { key: "vodalipa",  label: "VODA LIPA" },
+  { key: "nmb",       label: "NMB BANK" },
+  { key: "crdb",      label: "CRDB BANK" },
+  { key: "cash",      label: "CASH" }
 ];
 
 const TIERS = [
@@ -44,6 +44,21 @@ function fmt(n) {
   return "TZS " + Math.round(n).toLocaleString();
 }
 
+function loadSessions() {
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      return JSON.parse(fs.readFileSync(SESSIONS_FILE, "utf8"));
+    }
+  } catch (e) {}
+  return {};
+}
+
+function saveSessions(sessions) {
+  try {
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions), "utf8");
+  } catch (e) {}
+}
+
 async function sendMessage(to, text) {
   try {
     await axios.post(
@@ -57,31 +72,44 @@ async function sendMessage(to, text) {
   }
 }
 
-async function handleRipoti(senderJid, messageText, session) {
+async function handleMessage(senderJid, messageText) {
+  const sessions = loadSessions();
+  if (!sessions[senderJid]) sessions[senderJid] = { step: "idle", data: {} };
+  const session = sessions[senderJid];
   const text = messageText.trim();
+  const textLower = text.toLowerCase();
 
-  if (!session || session.step === "idle") {
-    if (text.toLowerCase() === "ripoti") {
-      sessions[senderJid] = { step: "name", data: {} };
-      await sendMessage(senderJid, "Habari! 👋 Tuanze ripoti ya shift.\n\nJina lako ni nani?\n*(Alfany / Alex)*");
-      return;
-    }
-
-    if (text.toLowerCase().startsWith("lipa ")) {
-      const amt = parseInt(text.replace(/lipa/i, "").replace(/,/g, "").trim());
-      if (!isNaN(amt)) {
-        const tier = getFee(amt);
-        if (tier) {
-          await sendMessage(senderJid, `💰 Lipa Namba Fee\n\nKiasi: ${fmt(amt)}\nFee yako: *${fmt(tier.fee)}*`);
-        } else {
-          await sendMessage(senderJid, "Kiasi hicho hakipo kwenye mfumo. Tuma kiasi kati ya TZS 1,000 - 3,000,000.");
-        }
-      }
-      return;
-    }
-
+  // Always allow RIPOTI to restart
+  if (textLower === "ripoti") {
+    sessions[senderJid] = { step: "name", data: {} };
+    saveSessions(sessions);
     await sendMessage(senderJid,
-      "Habari! 👋 Wakala Sinza Bot\n\n" +
+      "Habari! 👋 Tuanze ripoti ya shift.\n\n" +
+      "Jina lako ni nani?\n*(Alfany / Alex)*"
+    );
+    return;
+  }
+
+  // Lipa fee checker — works anytime
+  if (textLower.startsWith("lipa ")) {
+    const amt = parseInt(text.replace(/lipa/i,"").replace(/,/g,"").trim());
+    if (!isNaN(amt)) {
+      const tier = getFee(amt);
+      if (tier) {
+        await sendMessage(senderJid,
+          `💰 *Lipa Namba Fee*\n\nKiasi: ${fmt(amt)}\nFee yako: *${fmt(tier.fee)}*`
+        );
+      } else {
+        await sendMessage(senderJid, "Kiasi hicho hakipo kwenye mfumo. Tuma kati ya TZS 1,000 - 3,000,000.");
+      }
+    }
+    return;
+  }
+
+  // IDLE — show menu
+  if (session.step === "idle") {
+    await sendMessage(senderJid,
+      "Habari! 👋 *Wakala Sinza Bot*\n\n" +
       "Tumia amri hizi:\n" +
       "*RIPOTI* - Kutuma ripoti ya shift\n" +
       "*LIPA 50000* - Angalia fee ya lipa namba\n" +
@@ -90,30 +118,42 @@ async function handleRipoti(senderJid, messageText, session) {
     return;
   }
 
+  // NAME step
   if (session.step === "name") {
-    const name = text.trim();
-    if (!["alfany", "alex"].includes(name.toLowerCase())) {
-      await sendMessage(senderJid, "Tafadhali andika jina lako sahihi:\n*Alfany* au *Alex*");
+    if (!["alfany","alex"].includes(textLower)) {
+      await sendMessage(senderJid, "Tafadhali andika jina lako:\n*Alfany* au *Alex*");
       return;
     }
-    session.data.name = name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+    session.data.name = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
     session.step = "float_0";
-    await sendMessage(senderJid, `Sawa ${session.data.name}! 💪\n\nTupe salio la *${FLOAT_FIELDS[0].label}* (TZS)\n_(Andika 0 kama hakuna)_`);
+    saveSessions(sessions);
+    await sendMessage(senderJid,
+      `Sawa ${session.data.name}! 💪\n\n` +
+      `Tupe salio la *${FLOAT_FIELDS[0].label}* (TZS)\n` +
+      `_(Andika 0 kama hakuna)_`
+    );
     return;
   }
 
+  // FLOAT steps
   if (session.step.startsWith("float_")) {
     const idx = parseInt(session.step.split("_")[1]);
-    const val = parseFloat(text.replace(/,/g, "")) || 0;
+    const val = parseFloat(text.replace(/,/g,"")) || 0;
     session.data[FLOAT_FIELDS[idx].key] = val;
 
     if (idx + 1 < FLOAT_FIELDS.length) {
       session.step = `float_${idx + 1}`;
-      await sendMessage(senderJid, `✅ Sawa!\n\nSasa tupe salio la *${FLOAT_FIELDS[idx + 1].label}* (TZS)\n_(Andika 0 kama hakuna)_`);
+      saveSessions(sessions);
+      await sendMessage(senderJid,
+        `✅ Sawa!\n\nSasa tupe salio la *${FLOAT_FIELDS[idx+1].label}* (TZS)\n` +
+        `_(Andika 0 kama hakuna)_`
+      );
     } else {
       session.step = "lipa_fees";
+      saveSessions(sessions);
       await sendMessage(senderJid,
-        "✅ Vizuri sana!\n\nSasa tupe *huduma za lipa namba* ulizokusanya shift hii.\n\n" +
+        "✅ Vizuri sana! Float zote zimesajiliwa.\n\n" +
+        "Sasa tupe *huduma za lipa namba* ulizokusanya shift hii.\n\n" +
         "Andika kama hivi:\n`voda 1500, tigo 1500, airtel 1000`\n\n" +
         "Au andika *hapana* kama hakuna."
       );
@@ -121,17 +161,17 @@ async function handleRipoti(senderJid, messageText, session) {
     return;
   }
 
+  // LIPA FEES step
   if (session.step === "lipa_fees") {
     session.data.lipaFees = 0;
     session.data.lipaDetails = "";
-    if (text.toLowerCase() !== "hapana") {
+    if (textLower !== "hapana") {
       let total = 0;
-      const parts = text.split(",");
       const details = [];
-      parts.forEach(p => {
-        const match = p.trim().match(/(\w+)\s+(\d+)/);
+      text.split(",").forEach(p => {
+        const match = p.trim().match(/(\w+)\s+([\d,]+)/);
         if (match) {
-          const amt = parseInt(match[2]);
+          const amt = parseInt(match[2].replace(/,/g,""));
           total += amt;
           details.push(`${match[1]}: ${fmt(amt)}`);
         }
@@ -140,6 +180,7 @@ async function handleRipoti(senderJid, messageText, session) {
       session.data.lipaDetails = details.join(", ");
     }
     session.step = "expenses";
+    saveSessions(sessions);
     await sendMessage(senderJid,
       "✅ Sawa!\n\nKuna *matumizi* yoyote ya shift hii?\n\n" +
       "Andika kama hivi:\n`chakula 10000, transport 5000`\n\n" +
@@ -148,17 +189,17 @@ async function handleRipoti(senderJid, messageText, session) {
     return;
   }
 
+  // EXPENSES step
   if (session.step === "expenses") {
     session.data.expenses = 0;
     session.data.expDetails = "";
-    if (text.toLowerCase() !== "hapana") {
+    if (textLower !== "hapana") {
       let total = 0;
-      const parts = text.split(",");
       const details = [];
-      parts.forEach(p => {
-        const match = p.trim().match(/(\w+)\s+(\d+)/);
+      text.split(",").forEach(p => {
+        const match = p.trim().match(/(\w+)\s+([\d,]+)/);
         if (match) {
-          const amt = parseInt(match[2]);
+          const amt = parseInt(match[2].replace(/,/g,""));
           total += amt;
           details.push(`${match[1]}: ${fmt(amt)}`);
         }
@@ -168,12 +209,13 @@ async function handleRipoti(senderJid, messageText, session) {
     }
 
     const d = session.data;
-    const totalFloat = FLOAT_FIELDS.reduce((s, f) => s + (d[f.key] || 0), 0);
+    const totalFloat = FLOAT_FIELDS.reduce((s,f) => s + (d[f.key] || 0), 0);
     const profit = d.lipaFees - d.expenses;
     const now = new Date();
     const timeStr = now.toLocaleString("en-TZ", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit", timeZone: "Africa/Dar_es_Salaam"
+      day:"2-digit", month:"short", year:"numeric",
+      hour:"2-digit", minute:"2-digit",
+      timeZone:"Africa/Dar_es_Salaam"
     });
 
     const report =
@@ -183,7 +225,7 @@ async function handleRipoti(senderJid, messageText, session) {
       `🕐 Wakati: ${timeStr}\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `💰 *SALIO ZA FLOAT*\n` +
-      FLOAT_FIELDS.map(f => `  ${f.label}: ${fmt(d[f.key] || 0)}`).join("\n") + "\n" +
+      FLOAT_FIELDS.map(f => `  ${f.label}: ${fmt(d[f.key]||0)}`).join("\n") + "\n" +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `📱 *HUDUMA ZA LIPA NAMBA*\n` +
       `  ${d.lipaDetails || "Hakuna"}\n` +
@@ -197,10 +239,11 @@ async function handleRipoti(senderJid, messageText, session) {
       `📈 *FAIDA YA SHIFT: ${fmt(profit)}*\n` +
       `━━━━━━━━━━━━━━━━━━━━`;
 
-    await sendMessage(senderJid, `✅ Ripoti imekamilika! Asante ${d.name}.\n\nInatumwa kwa Michael...`);
-    await sendMessage(GROUP_ID, report);
+    sessions[senderJid] = { step: "idle", data: {} };
+    saveSessions(sessions);
 
-    sessions[senderJid] = { step: "idle" };
+    await sendMessage(senderJid, `✅ Ripoti imekamilika! Asante ${d.name}. 🎉`);
+    await sendMessage(GROUP_ID, report);
     return;
   }
 }
@@ -216,14 +259,11 @@ app.post('/webhook', async (req, res) => {
   try {
     const messages = req.body?.data?.messages;
     if (!messages) return;
-
-    const fromMe = messages?.key?.fromMe;
-    if (fromMe) return;
+    if (messages?.key?.fromMe) return;
 
     const remoteJid = messages?.key?.remoteJid || "";
     let cleanedPn = messages?.key?.cleanedSenderPn || "";
     const messageBody = messages?.messageBody || "";
-
     if (!messageBody) return;
 
     if (!cleanedPn && remoteJid.includes("@lid")) {
@@ -238,7 +278,7 @@ app.post('/webhook', async (req, res) => {
       }
     }
 
-    const senderNumber = cleanedPn.replace("+", "").trim();
+    const senderNumber = cleanedPn.replace("+","").trim();
     console.log("Sender:", senderNumber, "| Message:", messageBody);
 
     if (!senderNumber.includes(ALLOWED_NUMBER)) {
@@ -247,9 +287,7 @@ app.post('/webhook', async (req, res) => {
     }
 
     const senderJid = "+" + senderNumber;
-    if (!sessions[senderJid]) sessions[senderJid] = { step: "idle" };
-
-    await handleRipoti(senderJid, messageBody, sessions[senderJid]);
+    await handleMessage(senderJid, messageBody);
 
   } catch (error) {
     console.error("Error:", error.response?.data || error.message);
